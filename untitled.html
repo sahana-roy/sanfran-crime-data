@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+
+<html lang='en'>
+
+  <head>
+    
+    <meta charset='utf-8' />
+    <title>San Francisco Crime Data</title>
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css' rel='stylesheet' />
+  
+    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.min.js'></script>
+    <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.css' type='text/css' />
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.0/mapbox-gl-directions.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-directions/v4.1.0/mapbox-gl-directions.css" type="text/css">
+
+  <body>
+    <div id='map'></div>
+    <div id='console'>
+      <h1>San Francisco Crime Incidents</h1>
+      <p>Data: <a href='https://data.sfgov.org/Public-Safety/Police-Department-Incident-Reports-2018-to-Present/wg3w-h783'>Occurence of criminal incidents</a> in SF, as of 23rd March 2022</p>
+    
+      <div class='session'>
+        <h2>Frequency of incidents</h2>
+          
+          <div class='row colors'></div>
+          
+          <div class='row labels'>
+              <div class='label'>10</div>
+              <div class='label'>20</div>
+              <div class='label'>30</div>
+              <div class='label'>40</div>
+              <div class='label'>50</div>
+              <div class='label'>100+</div>
+          </div>
+      </div>
+   </div>
+
+  <div class='crime-info'>
+    <div><strong>Neighborhood: </strong> <span id='nhood'></span></div>
+    <div><strong>Incident: </strong> <span id='inci'></span></div>
+  </div>
+
+  </body>
+
+<script>
+
+mapboxgl.accessToken = 'pk.eyJ1Ijoic2FoYW5hcm95IiwiYSI6ImNsMTM5cXZ5ZTBxMXUzYm5zb29yMmwzcnQifQ.1U2DH8VG1j_jxy47WL7fDw';
+
+const map = new mapboxgl.Map({
+  container: 'map', // container element id
+  style: 'mapbox://styles/mapbox/streets-v11?optimize=true',
+  center: [-122.42, 37.77], // initial map center in [lon, lat]
+  zoom: 11
+});
+
+map.on('load', () => {
+
+  map.resize()
+
+  map.addSource('sanfran', {
+  'type': 'geojson',
+  'data': 'https://sahana-roy.github.io/sanfran-crime-data/sanfran_crime.geojson'
+  });
+
+  map.addLayer({
+    id: 'crimes',
+    type: 'circle',
+    source: 'sanfran',
+    paint: {
+      'circle-radius': [
+        'case',
+              ['boolean', ['feature-state', 'hover'], false],
+              [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'count']],
+        0,
+        1,
+        2,
+        5
+      ],
+      5
+            ],
+            'circle-stroke-color': '#000',
+            'circle-stroke-width': 0.25,
+            // The feature-state dependent circle-color expression will render
+            // the color according to its magnitude when
+            // a feature's hover state is set to true
+      'circle-color': [
+        'interpolate',
+        ['linear'],
+        ['number', ['get', 'count']],
+        10,
+        '#2DC4B2',
+        20,
+        '#3BB3C3',
+        30,
+        '#669EC4',
+        40,
+        '#8B88B6',
+        50,
+        '#A2719B',
+        100,
+        '#AA5E79'
+      ],
+      'circle-opacity': 0.8
+    }
+  });
+
+  map.addSource('single-point', {
+    type: 'geojson',
+    data: {
+      type: 'FeatureCollection',
+      features: []
+    }
+  });
+
+  map.addLayer({
+    id: 'point',
+    source: 'single-point',
+    type: 'circle',
+    paint: {
+      'circle-radius': 10,
+      'circle-color': '#FF0000'
+    }
+  });
+
+  // Listen for the `result` event from the Geocoder
+  // `result` event is triggered when a user makes a selection
+  //  Add a marker at the result's coordinates
+  geocoder.on('result', (event) => {
+  map.getSource('single-point').setData(event.result.geometry);
+
+  });
+
+});
+
+const inciDisplay = document.getElementById('inci');
+const locDisplay = document.getElementById('nhood');
+
+let crimeID = null;
+
+map.on('mousemove', 'crimes', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  // Set constants equal to the current feature's magnitude, location, and time
+  var crimeInci = e.features[0].properties['Incident Subcategory'];
+  var crimeLocation = e.features[0].properties['Analysis Neighborhood'];
+
+    if (e.features.length > 0) {
+      // Display the magnitude, location, and time in the sidebar
+      inciDisplay.textContent = crimeInci;
+      locDisplay.textContent = crimeLocation;
+
+      // When the mouse moves over the earthquakes-viz layer, update the
+      // feature state for the feature under the mouse
+      if (crimeID) {
+        map.removeFeatureState({
+          source: 'sanfran',
+          id: crimeID
+        });
+      }
+
+      crimeID = e.features[0].properties.Point;
+
+      map.setFeatureState(
+      {
+        source: 'sanfran',
+        id: crimeID
+      },
+      {
+        hover: true
+      }
+      );
+    }
+});
+
+// When the mouse leaves the earthquakes-viz layer, update the
+// feature state of the previously hovered feature
+map.on('mouseleave', 'crimes', function () {
+  if (crimeID) {
+    map.setFeatureState(
+    {
+      source: 'sanfran',
+      id: crimeID
+    },
+    {
+      hover: false
+    }
+    );
+  }
+  crimeID = null;
+  // Remove the information from the previously hovered feature from the sidebar
+  inciDisplay.textContent = '';
+  locDisplay.textContent = '';
+  // Reset the cursor style
+  map.getCanvas().style.cursor = '';
+});
+
+const geocoder = new MapboxGeocoder({
+  // Initialize the geocoder
+  accessToken: mapboxgl.accessToken, // Set the access token
+  mapboxgl: mapboxgl, // Set the mapbox-gl instance
+  marker: false, // Do not use the default marker style
+  placeholder: 'Search for an address in San Francisco', // Placeholder text for the search bar
+  bbox: [-122.553416,  37.676331, -122.289449, 37.852468], 
+});
+
+// Add the geocoder to the map
+map.addControl(geocoder, 'bottom-left');
+
+map.addControl(
+new MapboxDirections({
+accessToken: mapboxgl.accessToken
+}),
+'top-right'
+);
+
+
+</script>
+
+</head>
+
+<style>
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+#map {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+}
+
+h1 {
+  font-size: 20px;
+  line-height: 30px;
+}
+
+h2 {
+  font-size: 14px;
+  line-height: 20px;
+  margin-bottom: 10px;
+}
+
+a {
+  text-decoration: none;
+  color: #2dc4b2;
+}
+
+#console {
+  position: absolute;
+  width: 240px;
+  margin: 10px;
+  padding: 10px 20px;
+  background-color: white;
+}
+
+.session {
+  margin-bottom: 20px;
+}
+
+.row {
+  height: 12px;
+  width: 100%;
+}
+
+.colors {
+  background: linear-gradient(to right, #2dc4b2, #3bb3c3, #669ec4, #8b88b6, #a2719b, #aa5e79);
+  margin-bottom: 5px;
+}
+
+.label {
+  width: 15%;
+  display: inline-block;
+  text-align: center;
+}
+
+.mapboxgl-popup {
+max-width: 400px;
+font: 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+}
+
+.crime-info {
+  position: absolute;
+  font-family: sans-serif;
+  margin-top: 300px;
+  margin-left: 5px;
+  padding: 5px;
+  width: 30%;
+  border: 2px solid black;
+  font-size: 14px;
+  color: #222;
+  background-color: #fff;
+  border-radius: 3px;
+}
+
+  </style>
+
+</html>
